@@ -1,0 +1,231 @@
+#!/usr/bin/env node
+
+var path = require("path")
+var program = require('commander')
+var ProgressBar = require('progress')
+var request = require('request')
+var fs = require("fs")
+var inquirer = require('inquirer')
+var unzip = require("unzip")
+var ora = require('ora')
+var chalk = require('chalk')
+var ncp = require('ncp').ncp
+var mkdirp = require('mkdirp')
+
+
+
+/**
+ * Usage.
+ */
+
+program
+    .usage('<template-name> [project-name]')
+
+/**
+ * Help.
+ */
+
+program.on('--help', function() {
+    console.log('  Examples:')
+    console.log()
+    console.log(chalk.gray('    # create a new project with an official template'))
+    console.log('    $ digiocean create h5 my-project')
+    console.log()
+})
+
+function help() {
+    program.parse(process.argv)
+    if (program.args.length < 2) return program.help()
+}
+help()
+
+/**
+ * Padding.
+ */
+
+console.log()
+process.on('exit', function() {
+    console.log()
+})
+
+/**
+ * Settings.
+ */
+
+var spinner = ora('loading')
+
+var template = program.args[0]
+var pjName = path.resolve(program.args[1])
+var tplDir = "../generator"
+var localTpl = path.join(__dirname, tplDir, "generator-" + template + "-master")
+var localPackage = path.join(__dirname, tplDir, "generator-" + template + "-master/package.json")
+
+if (fs.existsSync(pjName)) {
+    inquirer.prompt([{
+        type: 'confirm',
+        message: "[" + program.args[1] + "] 目录已经存在，是否覆盖 ?",
+        name: "ok"
+    }]).then(function(answers) {
+        if (answers.ok) {
+            console.log("")
+            run()
+        }
+    })
+} else {
+    run()
+}
+
+
+/**
+ * run.
+ */
+function run() {
+    return fs.existsSync(localPackage) ? getGithubPackageV(require(localPackage).version) : requestGithub()
+}
+
+
+/**
+ * 获取模板版本
+ */
+
+function getGithubPackageV(version) {
+    spinner.start()
+
+    var packageUrl = "https://raw.githubusercontent.com/digiocean/generator-" + template + "/master/package.json"
+    request(packageUrl, function(err, res, body) {
+        spinner.stop()
+
+        if (res.statusCode == 200) {
+            var gversion = JSON.parse(body).version
+
+            if (version != gversion) {
+                console.log(chalk.blue("    # local : ", version))
+                console.log(chalk.green("    # github: ", gversion))
+                console.log("")
+                selectPackage()
+            } else {
+                // 没有新的版本直接复制本地的
+                _mkdir(pjName, _clone)
+            }
+
+        } else {
+            console.log("error: " + response.statusCode)
+        }
+    })
+}
+
+/**
+ * confirm
+ */
+function selectPackage() {
+    inquirer.prompt([{
+        type: "confirm",
+        message: "github 有新的版本，是否下载 ?",
+        name: "ok"
+    }]).then(function(answers) {
+        if (answers.ok) {
+            console.log("")
+            requestGithub()
+        } else {
+            // 没有新的版本直接复制本地的
+            _mkdir(pjName, _clone)
+        }
+    })
+}
+
+/**
+ * 下载github模板
+ */
+function requestGithub() {
+    spinner.start()
+
+    var url = "http://www.github.com/digiocean/generator-" + template + "/archive/master.zip"
+
+    request(url).on('response', function(res) {
+        if (res.statusCode != 200) {
+            spinner.stop()
+            console.log("  error: " + res.statusCode + " 没有找到 ["+template+"] 这个模板")
+            process.exit(1)
+            return
+        }
+
+        var len = parseInt(res.headers['content-length'] - 1, 10)
+
+        if(!isNaN(len)){
+            spinner.stop()
+
+            var bar = new ProgressBar('downloading [:bar] :percent :etas', {
+                complete: '=',
+                incomplete: ' ',
+                total: len,
+                clear:true
+            })
+        }
+
+        var temp = path.resolve(__dirname, "../temp.zip")
+
+        res.on('data', function(chunk) {
+            bar && bar.tick(chunk.length)
+        }).pipe(fs.createWriteStream(temp))
+
+        res.on("end", function() {
+            if(bar){
+                bar && bar.terminate()
+            }else{
+                spinner.stop()
+            }
+            _unzip(temp, path.resolve(__dirname, "../generator"))
+        })
+    }).on('error', function(err) {
+        console.log(err)
+    })
+}
+
+
+
+/**
+ * help
+ */
+
+/**
+ * 解压
+ */
+function _unzip(zip, path) {
+    fs.createReadStream(zip)
+    .pipe(unzip.Extract({
+        path: path
+    }))
+    .on("finish",function(){
+        fs.unlinkSync(zip)
+        _mkdir(pjName,_clone)
+    })
+}
+
+/**
+ * 创建文件夹
+ */
+function _mkdir(path, callback) {
+    mkdirp(path, function(err) {
+        if (err) {
+            console.error(err)
+        } else {
+            callback && callback()
+        }
+    })
+}
+
+/**
+ * 复制
+ */
+function _clone() {
+    var dest = path.resolve(pjName)
+
+    ncp.limit = 16
+
+    ncp(localTpl, dest, function(err) {
+        if (err) {
+            return console.error(err)
+        }
+        console.log(chalk.blue("  创建成功！"))
+    })
+}

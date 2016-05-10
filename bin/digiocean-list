@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+
+var request = require('request')
+var chalk = require('chalk')
+var ora = require('ora')
+
+
+/**
+ * Padding.
+ */
+
+console.log()
+process.on('exit', function() {
+    console.log()
+})
+
+/**
+ * List repos.
+ */
+
+var spinner = ora('loading……')
+spinner.start()
+
+request({
+    url: 'https://api.github.com/users/digiocean/repos',
+    headers: {
+        'User-Agent': 'digiocean-generator'
+    }
+}, function(err, res, body) {
+    spinner.stop()
+    if (err) console.log(err)
+    console.log('  templates:')
+    console.log()
+    JSON.parse(body).forEach(function(repo) {
+        if(repo.name.indexOf("generator")>-1){
+            console.log(
+                '  ' + chalk.yellow('★') +
+                '  ' + chalk.blue(repo.name) +
+                ' - ' + repo.description)
+        }
+    })
+})
