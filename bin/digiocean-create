@@ -228,6 +228,10 @@ function _clone() {
         if (err) {
             return console.error(err)
         }
-        console.log(chalk.blue("  创建成功！"))
+        console.log(chalk.blue("  # 创建成功！"))
+        console.log("")
+        console.log(chalk.green("  $ cd  " + program.args[1]))
+        console.log(chalk.green("  $ npm install"))
+        console.log(chalk.green("  $ npm start"))
     })
 }
